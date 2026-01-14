@@ -1,8 +1,9 @@
-pandas
-matplotlib
-sqlalchemy
-psycopg2-binary
-jupyter
-streamlit
-plotly
-requests
+# Dépendances avec versions fixées pour la reproductibilité
+pandas==2.2.3
+matplotlib==3.9.3
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+jupyter==1.1.1
+streamlit==1.41.1
+plotly==5.24.1
+requests==2.32.3

@@ -1,34 +1,60 @@
 import org.apache.spark.sql.{SparkSession, DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
-import io.minio.{
-  MinioClient,
-  UploadObjectArgs,
-  BucketExistsArgs,
-  MakeBucketArgs
-}
+import org.apache.log4j.{Logger, LogManager}
 import java.io.File
 import java.util.Properties
 
+/** Data Validation & Ingestion
+  *   - Valide les données parquet
+  *   - Stocke dans S3/Minio via l'API S3A (compatible avec les deux)
+  *   - Ingère dans PostgreSQL
+  */
 object DataValidation {
+  private val logger: Logger = LogManager.getLogger(this.getClass)
+
   def main(args: Array[String]): Unit = {
+    // Configuration S3A via variables d'environnement
+    val s3Endpoint = sys.env.getOrElse("S3_ENDPOINT", "http://localhost:9000")
+    val s3AccessKey = sys.env.getOrElse(
+      "S3_ACCESS_KEY",
+      sys.env.getOrElse("MINIO_ACCESS_KEY", "")
+    )
+    val s3SecretKey = sys.env.getOrElse(
+      "S3_SECRET_KEY",
+      sys.env.getOrElse("MINIO_SECRET_KEY", "")
+    )
+    val bucketName = sys.env.getOrElse("S3_BUCKET", "warehouse")
+
     val spark = SparkSession
       .builder()
       .appName("DataIngestion")
       .master("local[*]")
+      // Configuration Hadoop S3A - compatible AWS S3 ET Minio
+      .config("spark.hadoop.fs.s3a.endpoint", s3Endpoint)
+      .config("spark.hadoop.fs.s3a.access.key", s3AccessKey)
+      .config("spark.hadoop.fs.s3a.secret.key", s3SecretKey)
+      .config(
+        "spark.hadoop.fs.s3a.path.style.access",
+        "true"
+      ) // Nécessaire pour Minio
+      .config(
+        "spark.hadoop.fs.s3a.impl",
+        "org.apache.hadoop.fs.s3a.S3AFileSystem"
+      )
+      .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
       .getOrCreate()
 
     import spark.implicits._
 
     // Lecture des données parquet
     val inputPath = "../data/raw/yellow_tripdata_2025-01.parquet"
-    val localOutputPath = "temp_validated_data"
+    val s3OutputPath = s"s3a://$bucketName/validated/yellow_tripdata_2025-01"
 
-    println(s"Lecture depuis $inputPath")
+    logger.info(s"Lecture depuis $inputPath")
 
     try {
       val df = spark.read.parquet(inputPath)
-
-      println(s"Total records: ${df.count()}")
+      logger.info(s"Total records: ${df.count()}")
 
       // Filtrage des données invalides
       val validatedDf = df.filter(
@@ -39,32 +65,19 @@ object DataValidation {
       )
 
       val validCount = validatedDf.count()
-      println(s"Records valides: $validCount")
+      logger.info(s"Records valides: $validCount")
 
-      // --- Etape 1: Stockage Minio ---
-      println("--- Branch 1: Stockage Minio ---")
-      // Sauvegarde locale avant upload
-
-      // Clean up previous run if exists
-      val outputDir = new File(localOutputPath)
-      if (outputDir.exists()) {
-        deleteRecursively(outputDir)
-      }
+      // --- Etape 1: Stockage S3/Minio via S3A ---
+      logger.info("--- Branch 1: Stockage S3/Minio (via S3A) ---")
 
       validatedDf.write
-        .mode("overwrite")
-        .parquet(localOutputPath)
+        .mode(SaveMode.Overwrite)
+        .parquet(s3OutputPath)
 
-      // Upload vers le bucket
-      uploadToMinio(
-        localOutputPath,
-        "warehouse",
-        "validated/yellow_tripdata_2025-01"
-      )
-      println("Upload Minio terminé.")
+      logger.info(s"Upload S3A terminé: $s3OutputPath")
 
       // --- Etape 2: Ingestion Postgres ---
-      println("--- Branch 2: Ingestion Postgres ---")
+      logger.info("--- Branch 2: Ingestion Postgres ---")
 
       // Mapping vers le schéma fact_trips
       val postgresDf = validatedDf.select(
@@ -103,81 +116,21 @@ object DataValidation {
       connectionProperties.put("driver", "org.postgresql.Driver")
 
       // Ecriture en base
-      println(s"Ecriture dans Postgres ($jdbcUrl)...")
-      println(s"Postgres DataFrame count: ${postgresDf.count()}")
+      logger.info(s"Ecriture dans Postgres ($jdbcUrl)...")
+      logger.info(s"Postgres DataFrame count: ${postgresDf.count()}")
 
       postgresDf.write
         .mode(SaveMode.Append)
         .jdbc(jdbcUrl, "fact_trips", connectionProperties)
 
-      println("Pipeline terminé avec succès.")
+      logger.info("Pipeline terminé avec succès.")
 
     } catch {
       case e: Exception =>
-        println(s"Erreur: ${e.getMessage}")
+        logger.error(s"Erreur: ${e.getMessage}")
         e.printStackTrace()
     } finally {
       spark.stop()
-    }
-  }
-
-  def uploadToMinio(
-      localPath: String,
-      bucketName: String,
-      remotePath: String
-  ): Unit = {
-    // Configuration Minio
-    val minioEndpoint =
-      sys.env.getOrElse("MINIO_ENDPOINT", "http://localhost:9000")
-    val minioAccessKey = sys.env.getOrElse("MINIO_ACCESS_KEY", "minio")
-    val minioSecretKey = sys.env.getOrElse("MINIO_SECRET_KEY", "minio123")
-
-    val minioClient = MinioClient
-      .builder()
-      .endpoint(minioEndpoint)
-      .credentials(minioAccessKey, minioSecretKey)
-      .build()
-
-    // Création du bucket si nécessaire
-    val found = minioClient.bucketExists(
-      BucketExistsArgs.builder().bucket(bucketName).build()
-    )
-    if (!found) {
-      minioClient.makeBucket(
-        MakeBucketArgs.builder().bucket(bucketName).build()
-      )
-    }
-
-    // Upload files
-    val dir = new File(localPath)
-    if (dir.exists() && dir.isDirectory) {
-      val files = dir.listFiles()
-      if (files != null) {
-        files.foreach { file =>
-          if (file.isFile && !file.getName.startsWith(".")) { // Skip hidden files like .crc
-            val objectName = s"$remotePath/${file.getName}"
-            println(s"Uploading ${file.getName} to $objectName")
-
-            minioClient.uploadObject(
-              UploadObjectArgs
-                .builder()
-                .bucket(bucketName)
-                .`object`(objectName)
-                .filename(file.getAbsolutePath)
-                .build()
-            )
-          }
-        }
-      }
-    }
-  }
-
-  def deleteRecursively(file: File): Unit = {
-    if (file.isDirectory) {
-      file.listFiles.foreach(deleteRecursively)
-    }
-    if (file.exists && !file.delete) {
-      throw new Exception(s"Unable to delete ${file.getAbsolutePath}")
     }
   }
 }

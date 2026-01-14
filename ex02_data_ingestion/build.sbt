@@ -9,7 +9,8 @@ val sparkVersion = "3.5.0"
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % sparkVersion,
   "org.apache.spark" %% "spark-sql" % sparkVersion,
-  "io.minio" % "minio" % "8.5.7",
+  // spark-hadoop-cloud pour compatibilité S3A (AWS S3 et Minio)
+  "org.apache.spark" %% "spark-hadoop-cloud" % sparkVersion,
   "org.postgresql" % "postgresql" % "42.6.0"
 )
 

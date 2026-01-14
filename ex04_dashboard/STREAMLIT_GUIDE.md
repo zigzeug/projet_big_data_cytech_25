@@ -6,7 +6,7 @@ J'ai mis en place une application Streamlit connectée directement à la base de
 ### Comment le lancer
 Le service est géré par Docker Compose :
 ```bash
-docker-compose up -d --build streamlit
+docker compose up -d --build streamlit
 ```
 
 ### Accès
