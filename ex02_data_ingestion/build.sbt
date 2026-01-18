@@ -11,7 +11,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion,
   // spark-hadoop-cloud pour compatibilité S3A (AWS S3 et Minio)
   "org.apache.spark" %% "spark-hadoop-cloud" % sparkVersion,
-  "org.postgresql" % "postgresql" % "42.6.0"
+  "org.postgresql" % "postgresql" % "42.7.8"  // Updated to fix CVE-2024-1597
 )
 
 // Add JVM options to fix illegal reflective access warnings
