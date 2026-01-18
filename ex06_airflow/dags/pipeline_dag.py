@@ -1,10 +1,16 @@
 from airflow import DAG
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.http.operators.http import SimpleHttpOperator
-from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
+from airflow.models import Variable
 from docker.types import Mount
 import os
+
+
+# Retrieve configuration from Airflow Variables
+# Defaults are provided for fallback but should be configured in Airflow
+pg_password = Variable.get("PGPASSWORD", default_var="password")
+project_path = Variable.get("PROJECT_PATH", default_var="/Users/zigzeug/Documents/GitHub/projet_big_data_cytech_25")
 
 default_args = {
     'owner': 'airflow',
@@ -32,10 +38,10 @@ with DAG(
         docker_url='unix://var/run/docker.sock',
         network_mode='spark-network',
         environment={
-            'PGPASSWORD': 'password'
+            'PGPASSWORD': pg_password
         },
         mounts=[
-            Mount(source='/Users/zigzeug/Documents/GitHub/projet_big_data_cytech_25/ex03_sql_table_creation', target='/sql', type='bind')
+            Mount(source=os.path.join(project_path, 'ex03_sql_table_creation'), target='/sql', type='bind')
         ]
     )
 
@@ -49,10 +55,10 @@ with DAG(
         docker_url='unix://var/run/docker.sock',
         network_mode='spark-network',
         environment={
-            'PGPASSWORD': 'password'
+            'PGPASSWORD': pg_password
         },
         mounts=[
-            Mount(source='/Users/zigzeug/Documents/GitHub/projet_big_data_cytech_25/ex03_sql_table_creation', target='/sql', type='bind')
+            Mount(source=os.path.join(project_path, 'ex03_sql_table_creation'), target='/sql', type='bind')
         ]
     )
 
@@ -76,7 +82,7 @@ with DAG(
             'MINIO_ENDPOINT': 'http://minio:9000'
         },
         mounts=[
-            Mount(source='/Users/zigzeug/Documents/GitHub/projet_big_data_cytech_25', target='/app', type='bind')
+            Mount(source=project_path, target='/app', type='bind')
         ]
     )
 

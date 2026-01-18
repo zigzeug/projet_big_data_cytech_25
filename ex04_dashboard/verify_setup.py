@@ -1,7 +1,4 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
-import psycopg2
 
 print("Libraries imported successfully.")
 
