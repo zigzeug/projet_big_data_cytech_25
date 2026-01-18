@@ -6,6 +6,9 @@ from airflow.utils.dates import days_ago
 from docker.types import Mount
 import os
 
+# Get the project root from environment variable or use default
+PROJECT_ROOT = os.getenv('PROJECT_ROOT', '/opt/airflow/project')
+
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
@@ -32,10 +35,10 @@ with DAG(
         docker_url='unix://var/run/docker.sock',
         network_mode='spark-network',
         environment={
-            'PGPASSWORD': 'password'
+            'PGPASSWORD': os.getenv('DB_PASS', 'password')
         },
         mounts=[
-            Mount(source='/Users/zigzeug/Documents/GitHub/projet_big_data_cytech_25/ex03_sql_table_creation', target='/sql', type='bind')
+            Mount(source=f'{PROJECT_ROOT}/ex03_sql_table_creation', target='/sql', type='bind')
         ]
     )
 
@@ -49,10 +52,10 @@ with DAG(
         docker_url='unix://var/run/docker.sock',
         network_mode='spark-network',
         environment={
-            'PGPASSWORD': 'password'
+            'PGPASSWORD': os.getenv('DB_PASS', 'password')
         },
         mounts=[
-            Mount(source='/Users/zigzeug/Documents/GitHub/projet_big_data_cytech_25/ex03_sql_table_creation', target='/sql', type='bind')
+            Mount(source=f'{PROJECT_ROOT}/ex03_sql_table_creation', target='/sql', type='bind')
         ]
     )
 
@@ -76,7 +79,7 @@ with DAG(
             'MINIO_ENDPOINT': 'http://minio:9000'
         },
         mounts=[
-            Mount(source='/Users/zigzeug/Documents/GitHub/projet_big_data_cytech_25', target='/app', type='bind')
+            Mount(source=PROJECT_ROOT, target='/app', type='bind')
         ]
     )
 
